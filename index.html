@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App</title>
+</head>
+<body>
+    <h1>Real-time Chat</h1>
+    <div>
+        <input id="message" type="text" placeholder="Type a message">
+        <button>Send</button>
+    </div>
+    <div id="chat" style="border: 1px solid #ccc; padding: 10px; margin-top: 10px; height: 300px; overflow-y: scroll;">
+        <p>Messages will appear here...</p>
+    </div>
+
+    <script>
+        // Попросим пользователя ввести имя
+        const username = prompt("Enter your username:");
+
+        // Получаем токен через endpoint /login
+        fetch(`http://localhost:8080/login?username=${username}`)
+            .then(res => res.text())
+            .then(token => {
+                // Устанавливаем соединение с WebSocket, передавая токен в URL
+                const ws = new WebSocket(`http://localhost:8080/ws?token=${token}`);
+
+                // Получение сообщений от сервера
+                ws.onmessage = (event) => {
+                    const chat = document.getElementById("chat");
+                    chat.innerHTML += `<p>${event.data}</p>`;
+                };
+
+                // Отправка сообщений
+                function sendMessage() {
+                    const input = document.getElementById("message");
+                    if (input.value.trim() !== "") {
+                        ws.send(input.value);
+                        input.value = '';
+                    }
+                }
+
+                // Связываем кнопку с функцией отправки
+                document.querySelector("button").onclick = sendMessage;
+            })
+            .catch(err => console.error("Error fetching token:", err));
+    </script>
+</body>
+</html>
