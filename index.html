@@ -1,57 +1,41 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat App</title>
-</head>
-<body>
-    <h1>Real-time Chat</h1>
-    <div>
-        <input id="message" type="text" placeholder="Type a message">
-        <button>Send</button>
-    </div>
-    <div id="chat" style="border: 1px solid #ccc; padding: 10px; margin-top: 10px; height: 300px; overflow-y: scroll;">
-        <p>Messages will appear here...</p>
-    </div>
-
+<div>
+  <input id="room" type="text" placeholder="Room (default: general)">
+  <input id="username" type="text" placeholder="Username">
+  <button id="join">Join</button>
+</div>
+<div id="chat" style="border: 1px solid #ccc; padding: 10px; margin-top: 10px; height: 300px; overflow-y: scroll;">
+  <p>Messages will appear here...</p>
+</div>
+<input id="message" type="text" placeholder="Type a message">
+<button id="send">Send</button>
     <script>
-        // Попросим пользователя ввести имя
-        const username = prompt("Enter your username:");
+      let ws;
 
-        // Получаем токен через endpoint /login
-        fetch(`http://localhost:8080//login?username=${username}`)
-            .then(res => res.text())
-            .then(token => {
-                // Устанавливаем соединение с WebSocket, передавая токен в URL
-                const ws = new WebSocket(`ws://localhost:8080/ws?token=${token}`);
+      document.getElementById("join").onclick = () => {
+          const room = document.getElementById("room").value || "general";
+          const username = document.getElementById("username").value || "Anonymous";
 
-                // Получение сообщений от сервера
-                ws.onmessage = (event) => {
-                    const chat = document.getElementById("chat");
-                    chat.innerHTML += `<p>${event.data}</p>`;
-                };
+          // Закрываем старое соединение
+          if (ws) ws.close();
 
-                // Отправка сообщений
-                function sendMessage() {
-                    const input = document.getElementById("message");
-                    if (input.value.trim() !== "") {
-                        ws.send(input.value);
-                        input.value = '';
-                    }
-                }
+          // Устанавливаем новое соединение
+          ws = new WebSocket(`ws://localhost:8080/ws?username=${username}&room=${room}`);
 
-                // Связываем кнопку с функцией отправки
-                document.querySelector("button").onclick = sendMessage;
-            })
-            .catch(err => console.error("Error fetching token:", err));
-
-            const eventSource = new EventSource('http://localhost:8080//events');
-
-      eventSource.onmessage = (event) => {
-          const chat = document.getElementById("chat");
-          chat.innerHTML += `<p><strong>Server:</strong> ${event.data}</p>`;
+          ws.onmessage = (event) => {
+              const chat = document.getElementById("chat");
+              chat.innerHTML += `<p>${event.data}</p>`;
+          };
       };
+
+      document.getElementById("send").onclick = () => {
+          const input = document.getElementById("message");
+          if (input.value.trim() !== "") {
+              ws.send(JSON.stringify({ content: input.value }));
+              input.value = '';
+          }
+      };
+
     </script>
 </body>
 </html>

@@ -7,31 +7,25 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type Message struct {
+	Username string `json:"username"`
+	Content  string `json:"content"`
+}
+
+type Room struct {
+	Name     string
+	Clients  map[*websocket.Conn]string
+	Messages []Message
+}
+
+var rooms = make(map[string]*Room)
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true }, // Упростим проверку для локальной разработки
 }
 var clients = make(map[*websocket.Conn]string)
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	// Проверка поддержки WebSocket
-	if !websocket.IsWebSocketUpgrade(r) {
-		http.Error(w, "WebSocket not supported", http.StatusUpgradeRequired)
-		return
-	}
-
-	tokenString := r.URL.Query().Get("token")
-	if tokenString == "" {
-		http.Error(w, "Token required", http.StatusUnauthorized)
-		return
-	}
-	fmt.Println("Received token:", tokenString)
-
-	username, err := validateJWT(tokenString)
-	if err != nil {
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
-		return
-	}
-
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		fmt.Println("Upgrade error:", err)
@@ -39,22 +33,58 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	// Сохраняем подключение
-	clients[conn] = username
-	defer delete(clients, conn)
+	// Получаем имя пользователя и комнату из параметров
+	username := r.URL.Query().Get("username")
+	if username == "" {
+		username = "Anonymous"
+	}
 
-	// Уведомляем всех пользователей
-	broadcast(fmt.Sprintf("User %s has joined the chat!", username))
+	roomName := r.URL.Query().Get("room")
+	if roomName == "" {
+		roomName = "general"
+	}
+
+	// Создаем комнату, если её нет
+	room, exists := rooms[roomName]
+	if !exists {
+		room = &Room{
+			Name:    roomName,
+			Clients: make(map[*websocket.Conn]string),
+		}
+		rooms[roomName] = room
+	}
+
+	// Добавляем клиента в комнату
+	room.Clients[conn] = username
+
+	// Уведомляем пользователей в комнате
+	broadcastToRoom(room, fmt.Sprintf("User %s has joined the room!", username))
+
+	// Отправляем историю сообщений
+	for _, msg := range room.Messages {
+		conn.WriteJSON(msg)
+	}
 
 	// Чтение сообщений
 	for {
-		_, message, err := conn.ReadMessage()
+		var msg Message
+		err := conn.ReadJSON(&msg)
 		if err != nil {
 			fmt.Printf("User %s disconnected: %v\n", username, err)
 			break
 		}
-		broadcast(fmt.Sprintf("%s: %s", username, string(message)))
+
+		// Добавляем сообщение в историю
+		msg.Username = username
+		room.Messages = append(room.Messages, msg)
+
+		// Рассылаем сообщение всем в комнате
+		broadcastToRoom(room, fmt.Sprintf("%s: %s", msg.Username, msg.Content))
 	}
+
+	// Удаляем клиента при выходе
+	delete(room.Clients, conn)
+	broadcastToRoom(room, fmt.Sprintf("User %s has left the room!", username))
 }
 
 func broadcast(message string) {
@@ -64,6 +94,17 @@ func broadcast(message string) {
 			fmt.Println("Write error:", err)
 			client.Close()
 			delete(clients, client)
+		}
+	}
+}
+
+func broadcastToRoom(room *Room, message string) {
+	for client := range room.Clients {
+		err := client.WriteMessage(websocket.TextMessage, []byte(message))
+		if err != nil {
+			fmt.Println("Write error:", err)
+			client.Close()
+			delete(room.Clients, client)
 		}
 	}
 }
