@@ -20,11 +20,11 @@
         const username = prompt("Enter your username:");
 
         // Получаем токен через endpoint /login
-        fetch(`http://localhost:8080/login?username=${username}`)
+        fetch(`http://localhost:8080//login?username=${username}`)
             .then(res => res.text())
             .then(token => {
                 // Устанавливаем соединение с WebSocket, передавая токен в URL
-                const ws = new WebSocket(`http://localhost:8080/ws?token=${token}`);
+                const ws = new WebSocket(`ws://localhost:8080/ws?token=${token}`);
 
                 // Получение сообщений от сервера
                 ws.onmessage = (event) => {
@@ -45,6 +45,13 @@
                 document.querySelector("button").onclick = sendMessage;
             })
             .catch(err => console.error("Error fetching token:", err));
+
+            const eventSource = new EventSource('http://localhost:8080//events');
+
+      eventSource.onmessage = (event) => {
+          const chat = document.getElementById("chat");
+          chat.innerHTML += `<p><strong>Server:</strong> ${event.data}</p>`;
+      };
     </script>
 </body>
 </html>
